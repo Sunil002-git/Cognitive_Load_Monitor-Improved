@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block nav_settings %}active{% endblock %}
+
+{% block content %}
+
+{% if messages %}
+<div style="margin-bottom:16px">
+    {% for msg in messages %}
+    <div style="padding:10px 16px;border-radius:8px;font-size:0.8rem;font-weight:500;margin-bottom:6px;
+        {% if msg.tags == 'error' %}background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);color:var(--danger)
+        {% else %}background:rgba(0,229,160,0.08);border:1px solid rgba(0,229,160,0.25);color:var(--accent3){% endif %}">
+        <i class="bi bi-{% if msg.tags == 'error' %}x-circle{% else %}check-circle{% endif %}"></i>
+        {{ msg }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid-row" style="grid-template-columns:220px 1fr;gap:20px;align-items:start">
+
+    <!-- LEFT: Settings Nav -->
+    <div class="neo-card" style="padding:12px">
+        <div class="c-label" style="padding:4px 8px;margin-bottom:8px">Settings</div>
+        <a onclick="showTab('thresholds')" class="set-nav active" id="nav-thresholds"><i class="bi bi-sliders2"></i> Thresholds</a>
+        <a onclick="showTab('notifications')" class="set-nav" id="nav-notifications"><i class="bi bi-bell"></i> Notifications</a>
+        <a onclick="showTab('profile')" class="set-nav" id="nav-profile"><i class="bi bi-person"></i> Profile</a>
+        <a onclick="showTab('password')" class="set-nav" id="nav-password"><i class="bi bi-shield-lock"></i> Password</a>
+    </div>
+
+    <!-- RIGHT: Panels -->
+    <div>
+
+        <!-- ── THRESHOLDS ── -->
+        <div id="tab-thresholds" class="set-panel">
+            <div class="neo-card">
+                <div style="margin-bottom:20px">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.85rem;font-weight:700;color:var(--text-primary);margin-bottom:4px">Detection Thresholds</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted)">Configure when alerts are triggered based on your sensitivity preferences.</div>
+                </div>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="thresholds">
+
+                    <div style="margin-bottom:22px">
+                        <label class="set-label">Fatigue Alert Threshold</label>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <input type="range" name="fatigue_threshold" min="0.3" max="0.9" step="0.05"
+                                value="{{ s.fatigue_alert_threshold }}" id="fatSlider"
+                                oninput="document.getElementById('fatVal').textContent=(this.value*100).toFixed(0)+'%'"
+                                style="flex:1;accent-color:var(--accent)">
+                            <span id="fatVal" style="font-family:'Space Mono',monospace;font-size:0.8rem;color:var(--accent);min-width:38px">{{ s.fatigue_alert_threshold|floatformat:0 }}%</span>
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px">Alert fires when fatigue probability exceeds this value.</div>
+                    </div>
+
+                    <div style="margin-bottom:22px">
+                        <label class="set-label">Head Tilt Threshold (degrees)</label>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <input type="range" name="tilt_threshold" min="5" max="30" step="1"
+                                value="{{ s.posture_tilt_threshold }}" id="tiltSlider"
+                                oninput="document.getElementById('tiltVal').textContent=this.value+'°'"
+                                style="flex:1;accent-color:var(--accent2)">
+                            <span id="tiltVal" style="font-family:'Space Mono',monospace;font-size:0.8rem;color:var(--accent2);min-width:38px">{{ s.posture_tilt_threshold|floatformat:0 }}°</span>
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px">Poor posture alert triggers when head tilt exceeds this angle.</div>
+                    </div>
+
+                    <div style="margin-bottom:22px">
+                        <label class="set-label">Break Reminder Interval (minutes)</label>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <input type="range" name="break_interval" min="20" max="90" step="5"
+                                value="{{ s.break_interval_minutes }}" id="breakSlider"
+                                oninput="document.getElementById('breakVal').textContent=this.value+' min'"
+                                style="flex:1;accent-color:var(--accent3)">
+                            <span id="breakVal" style="font-family:'Space Mono',monospace;font-size:0.8rem;color:var(--accent3);min-width:52px">{{ s.break_interval_minutes }} min</span>
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px">How often to remind you to take a break.</div>
+                    </div>
+
+                    <div style="margin-bottom:22px">
+                        <label class="set-label">Work Hours Per Day</label>
+                        <div style="display:flex;align-items:center;gap:12px">
+                            <input type="range" name="work_hours" min="4" max="12" step="0.5"
+                                value="{{ s.work_hours_per_day }}" id="workSlider"
+                                oninput="document.getElementById('workVal').textContent=this.value+'h'"
+                                style="flex:1;accent-color:var(--warning)">
+                            <span id="workVal" style="font-family:'Space Mono',monospace;font-size:0.8rem;color:var(--warning);min-width:38px">{{ s.work_hours_per_day }}h</span>
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px">Used to calculate your burnout score (work contribution).</div>
+                    </div>
+
+                    <button type="submit" class="save-btn">Save Thresholds</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ── NOTIFICATIONS ── -->
+        <div id="tab-notifications" class="set-panel" style="display:none">
+            <div class="neo-card">
+                <div style="margin-bottom:20px">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.85rem;font-weight:700;color:var(--text-primary);margin-bottom:4px">Notification Preferences</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted)">Choose which alerts you want to receive during monitoring sessions.</div>
+                </div>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="notifications">
+
+                    <div class="toggle-row">
+                        <div>
+                            <div style="font-size:0.84rem;font-weight:500;color:var(--text-primary)">Fatigue Alerts</div>
+                            <div style="font-size:0.72rem;color:var(--text-muted)">Alert when ML model detects high fatigue probability</div>
+                        </div>
+                        <label class="toggle-sw">
+                            <input type="checkbox" name="fatigue_alerts" {% if s.enable_fatigue_alerts %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row">
+                        <div>
+                            <div style="font-size:0.84rem;font-weight:500;color:var(--text-primary)">Posture Alerts</div>
+                            <div style="font-size:0.72rem;color:var(--text-muted)">Alert when head tilt exceeds your threshold</div>
+                        </div>
+                        <label class="toggle-sw">
+                            <input type="checkbox" name="posture_alerts" {% if s.enable_posture_alerts %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row" style="border:none">
+                        <div>
+                            <div style="font-size:0.84rem;font-weight:500;color:var(--text-primary)">Break Reminders</div>
+                            <div style="font-size:0.72rem;color:var(--text-muted)">Remind you to take a break at your configured interval</div>
+                        </div>
+                        <label class="toggle-sw">
+                            <input type="checkbox" name="break_reminders" {% if s.enable_break_reminders %}checked{% endif %}>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <button type="submit" class="save-btn" style="margin-top:20px">Save Preferences</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ── PROFILE ── -->
+        <div id="tab-profile" class="set-panel" style="display:none">
+            <div class="neo-card">
+                <div style="margin-bottom:20px">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.85rem;font-weight:700;color:var(--text-primary);margin-bottom:4px">Profile</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted)">Your account information.</div>
+                </div>
+
+                <!-- Avatar display -->
+                <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px;padding:16px;background:rgba(255,255,255,0.02);border-radius:10px;border:1px solid var(--border)">
+                    <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:1.3rem;font-weight:700;color:#fff">
+                        {{ request.user.username|first|upper }}
+                    </div>
+                    <div>
+                        <div style="font-size:0.95rem;font-weight:600;color:var(--text-primary)">{{ request.user.username }}</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted)">{{ request.user.email|default:"No email set" }}</div>
+                        <div style="font-size:0.65rem;color:var(--text-dim);font-family:'Space Mono',monospace;margin-top:3px">Member since {{ request.user.date_joined|date:"d M Y" }}</div>
+                    </div>
+                </div>
+
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="profile">
+                    <div style="margin-bottom:18px">
+                        <label class="set-label">Display Name</label>
+                        <input type="text" name="display_name" value="{{ s.display_name }}" placeholder="How you want to be addressed"
+                            class="set-input">
+                    </div>
+                    <button type="submit" class="save-btn">Update Profile</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- ── PASSWORD ── -->
+        <div id="tab-password" class="set-panel" style="display:none">
+            <div class="neo-card">
+                <div style="margin-bottom:20px">
+                    <div style="font-family:'Space Mono',monospace;font-size:0.85rem;font-weight:700;color:var(--text-primary);margin-bottom:4px">Change Password</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted)">Use a strong password with at least 8 characters.</div>
+                </div>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="password">
+                    {% for field in pw_form %}
+                    <div style="margin-bottom:16px">
+                        <label class="set-label">{{ field.label }}</label>
+                        <input type="password" name="{{ field.html_name }}" class="set-input"
+                            placeholder="{{ field.label }}">
+                        {% if field.errors %}
+                            <div style="font-size:0.7rem;color:var(--danger);margin-top:4px">{{ field.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="save-btn">Change Password</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+.set-nav {
+    display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;
+    color:var(--text-muted);font-size:0.83rem;font-weight:500;cursor:pointer;
+    transition:all 0.15s;margin-bottom:2px;text-decoration:none;
+}
+.set-nav:hover,.set-nav.active { background:rgba(0,212,255,0.07);color:var(--accent); }
+.set-nav i { font-size:0.9rem;width:16px; }
+
+.set-label { display:block;font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--text-muted);font-family:'Space Mono',monospace;margin-bottom:8px; }
+
+.set-input { width:100%;background:var(--bg-deep);border:1px solid var(--border);border-radius:8px;
+    padding:10px 14px;font-size:0.86rem;color:var(--text-primary);font-family:'DM Sans',sans-serif;
+    outline:none;transition:border-color 0.2s; }
+.set-input:focus { border-color:var(--accent); }
+
+.save-btn { background:linear-gradient(135deg,rgba(0,212,255,0.2),rgba(123,92,240,0.2));
+    border:1px solid rgba(0,212,255,0.3);border-radius:8px;padding:10px 24px;
+    font-size:0.84rem;font-weight:600;color:var(--accent);cursor:pointer;
+    transition:all 0.2s;font-family:'DM Sans',sans-serif; }
+.save-btn:hover { background:linear-gradient(135deg,rgba(0,212,255,0.3),rgba(123,92,240,0.3)); }
+
+.toggle-row { display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:14px 0;border-bottom:1px solid var(--border); }
+
+.toggle-sw { position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0; }
+.toggle-sw input { opacity:0;width:0;height:0; }
+.slider { position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
+    background:var(--border);border-radius:12px;transition:0.3s; }
+.slider:before { position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;
+    background:#fff;border-radius:50%;transition:0.3s; }
+.toggle-sw input:checked + .slider { background:var(--accent); }
+.toggle-sw input:checked + .slider:before { transform:translateX(20px); }
+</style>
+
+<script>
+function showTab(name) {
+    document.querySelectorAll('.set-panel').forEach(p => p.style.display = 'none');
+    document.querySelectorAll('.set-nav').forEach(n => n.classList.remove('active'));
+    document.getElementById('tab-'+name).style.display = '';
+    document.getElementById('nav-'+name).classList.add('active');
+}
+
+// Set slider display values on load
+document.getElementById('fatVal').textContent = (document.getElementById('fatSlider').value * 100).toFixed(0) + '%';
+</script>
+
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block nav_dash %}active{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
@@ -187,7 +188,12 @@ setInterval(() => {
     const m = Math.floor(s / 60), sec = s % 60;
     document.getElementById('sessionTimer').textContent =
         String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
-    if (m >= 45) document.getElementById('breakAlert').classList.add('show');
+    const breakMins = {{ settings.break_interval_minutes|default:45 }};
+    if (m >= breakMins && m % breakMins === 0 && sec === 0) {
+        // POST break alert to server once per interval
+        fetch('/alerts/break/', {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}}).catch(()=>{});
+    }
+    if (m >= breakMins) document.getElementById('breakAlert').classList.add('show');
     else document.getElementById('breakAlert').classList.remove('show');
 }, 1000);
 

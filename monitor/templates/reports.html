@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block nav_reports %}active{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+        <div class="page-title" style="font-family:'Space Mono',monospace;font-size:1.1rem;font-weight:700">Session Reports</div>
+        <div class="page-sub" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">Last 50 sessions · Complete history</div>
+    </div>
+    <a href="/reports/download/" style="
+        display:inline-flex;align-items:center;gap:8px;
+        background:linear-gradient(135deg,rgba(0,212,255,0.15),rgba(123,92,240,0.15));
+        border:1px solid rgba(0,212,255,0.3);border-radius:8px;
+        padding:9px 18px;font-size:0.82rem;font-weight:600;
+        color:var(--accent);text-decoration:none;
+        transition:all 0.2s;font-family:'DM Sans',sans-serif;
+    ">
+        <i class="bi bi-download"></i> Download CSV
+    </a>
+</div>
+
+<!-- ── SUMMARY STRIP ── -->
+<div class="grid-row grid-4" style="margin-bottom:20px">
+    <div class="neo-card" style="padding:14px 16px">
+        <div class="c-label">Total Sessions</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--accent)">{{ sessions|length }}</div>
+    </div>
+    <div class="neo-card" style="padding:14px 16px">
+        <div class="c-label">Avg Duration</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--accent3)" id="avgDur">—</div>
+    </div>
+    <div class="neo-card" style="padding:14px 16px">
+        <div class="c-label">Avg Fatigue</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--warning)" id="avgFatigue">—</div>
+    </div>
+    <div class="neo-card" style="padding:14px 16px">
+        <div class="c-label">High Risk Sessions</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--danger)" id="highRisk">—</div>
+    </div>
+</div>
+
+<!-- ── FILTER BAR ── -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+    <input type="text" id="filterInput" placeholder="Filter by date or risk…"
+        style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;
+               font-size:0.82rem;color:var(--text-primary);font-family:'DM Sans',sans-serif;outline:none;
+               width:240px;transition:border-color 0.2s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
+    <select id="riskFilter" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;
+            padding:8px 14px;font-size:0.82rem;color:var(--text-muted);font-family:'Space Mono',monospace;outline:none">
+        <option value="">All risks</option>
+        <option value="Low">Low</option>
+        <option value="Medium">Medium</option>
+        <option value="High">High</option>
+    </select>
+    <div style="margin-left:auto;font-size:0.72rem;color:var(--text-muted);font-family:'Space Mono',monospace" id="rowCount"></div>
+</div>
+
+<!-- ── TABLE ── -->
+<div class="neo-card" style="padding:0;overflow:hidden">
+    <table id="sessionTable" style="width:100%;border-collapse:collapse">
+        <thead>
+            <tr style="background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border)">
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">#</th>
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">Date</th>
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">Start</th>
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">End</th>
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">Duration</th>
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">Avg Fatigue</th>
+                <th style="padding:12px 16px;text-align:left;font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400">Risk</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        {% for s in sessions %}
+        <tr class="trow" data-risk="{{ s.risk }}" data-date="{{ s.date }}"
+            style="border-bottom:1px solid var(--border);transition:background 0.15s"
+            onmouseover="this.style.background='rgba(0,212,255,0.03)'"
+            onmouseout="this.style.background='transparent'">
+            <td style="padding:12px 16px;font-family:'Space Mono',monospace;font-size:0.72rem;color:var(--text-muted)">{{ forloop.counter }}</td>
+            <td style="padding:12px 16px;font-size:0.84rem;color:var(--text-primary);font-weight:500">{{ s.date }}</td>
+            <td style="padding:12px 16px;font-family:'Space Mono',monospace;font-size:0.75rem;color:var(--text-muted)">{{ s.start }}</td>
+            <td style="padding:12px 16px;font-family:'Space Mono',monospace;font-size:0.75rem;color:var(--text-muted)">{{ s.end }}</td>
+            <td style="padding:12px 16px;font-family:'Space Mono',monospace;font-size:0.78rem;color:var(--accent)">{{ s.duration }} min</td>
+            <td style="padding:12px 16px">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;max-width:80px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
+                        <div style="height:100%;width:{{ s.avg_fatigue }}%;background:{% if s.avg_fatigue > 70 %}var(--danger){% elif s.avg_fatigue > 40 %}var(--warning){% else %}var(--accent3){% endif %};border-radius:2px"></div>
+                    </div>
+                    <span style="font-family:'Space Mono',monospace;font-size:0.72rem;color:{% if s.avg_fatigue > 70 %}var(--danger){% elif s.avg_fatigue > 40 %}var(--warning){% else %}var(--accent3){% endif %}">{{ s.avg_fatigue }}%</span>
+                </div>
+            </td>
+            <td style="padding:12px 16px">
+                {% if s.risk == 'Low' %}
+                    <span class="rbadge rbadge-low">Low</span>
+                {% elif s.risk == 'Medium' %}
+                    <span class="rbadge rbadge-medium">Medium</span>
+                {% elif s.risk == 'High' %}
+                    <span class="rbadge rbadge-high">High</span>
+                {% else %}
+                    <span style="color:var(--text-muted);font-size:0.75rem">—</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="7" style="padding:40px;text-align:center;color:var(--text-muted);font-size:0.85rem">
+                No sessions recorded yet. Start monitoring to see reports here.
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+// Compute summary
+const rows = document.querySelectorAll('.trow');
+let totalDur = 0, totalFat = 0, highRisk = 0, count = 0;
+rows.forEach(r => {
+    const dur = parseFloat(r.querySelector('td:nth-child(5)').textContent);
+    const fat = parseFloat(r.querySelector('td:nth-child(6) span').textContent);
+    const risk = r.dataset.risk;
+    if (!isNaN(dur)) { totalDur += dur; count++; }
+    if (!isNaN(fat)) totalFat += fat;
+    if (risk === 'High') highRisk++;
+});
+if (count > 0) {
+    document.getElementById('avgDur').textContent = Math.round(totalDur / count) + ' min';
+    document.getElementById('avgFatigue').textContent = (totalFat / count).toFixed(1) + '%';
+}
+document.getElementById('highRisk').textContent = highRisk;
+document.getElementById('rowCount').textContent = `${count} sessions`;
+
+// Filter
+function applyFilter() {
+    const text = document.getElementById('filterInput').value.toLowerCase();
+    const risk = document.getElementById('riskFilter').value;
+    let visible = 0;
+    rows.forEach(r => {
+        const match = (!text || r.textContent.toLowerCase().includes(text)) &&
+                      (!risk || r.dataset.risk === risk);
+        r.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('rowCount').textContent = `${visible} sessions`;
+}
+document.getElementById('filterInput').addEventListener('input', applyFilter);
+document.getElementById('riskFilter').addEventListener('change', applyFilter);
+</script>
+{% endblock %}

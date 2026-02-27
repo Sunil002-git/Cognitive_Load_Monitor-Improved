@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block nav_analytics %}active{% endblock %}
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-gauge@0.3.0/dist/chartjs-chart-gauge.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── SUMMARY CARDS ── -->
+<div class="grid-row grid-4">
+    <div class="neo-card">
+        <div class="c-icon i-cyan"><i class="bi bi-calendar-check"></i></div>
+        <div class="c-label">Total Sessions</div>
+        <div class="c-value col-cyan">{{ total_sessions }}</div>
+        <div class="c-meta">All time</div>
+    </div>
+    <div class="neo-card">
+        <div class="c-icon i-green"><i class="bi bi-clock"></i></div>
+        <div class="c-label">Total Hours</div>
+        <div class="c-value col-green">{{ total_hours }}h</div>
+        <div class="c-meta">Monitored work time</div>
+    </div>
+    <div class="neo-card">
+        <div class="c-icon i-warn"><i class="bi bi-activity"></i></div>
+        <div class="c-label">Avg Fatigue</div>
+        <div class="c-value col-warn">{{ avg_fatigue_all }}%</div>
+        <div class="c-meta">All-time average</div>
+    </div>
+    <div class="neo-card">
+        <div class="c-icon i-danger"><i class="bi bi-exclamation-triangle"></i></div>
+        <div class="c-label">High Risk Days</div>
+        <div class="c-value col-danger">{{ high_risk_days }}</div>
+        <div class="c-meta">Burnout risk: High</div>
+    </div>
+</div>
+
+<!-- ── TODAY STATS ── -->
+<div class="sec-label">Today</div>
+<div class="grid-row" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:20px">
+    <div class="neo-card" style="display:flex;align-items:center;gap:16px">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(0,212,255,0.1);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">⏱️</div>
+        <div>
+            <div class="c-label">Session Time Today</div>
+            <div style="font-family:'Space Mono',monospace;font-size:1.3rem;font-weight:700;color:var(--accent)">{{ today_minutes }} min</div>
+        </div>
+    </div>
+    <div class="neo-card" style="display:flex;align-items:center;gap:16px">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(255,209,102,0.1);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">🧠</div>
+        <div>
+            <div class="c-label">Avg Fatigue Today</div>
+            <div style="font-family:'Space Mono',monospace;font-size:1.3rem;font-weight:700;color:var(--warning)">{{ today_fatigue }}%</div>
+        </div>
+    </div>
+    <div class="neo-card" style="display:flex;align-items:center;gap:16px">
+        <div style="width:48px;height:48px;border-radius:12px;background:rgba(0,229,160,0.1);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0">📅</div>
+        <div>
+            <div class="c-label">Date</div>
+            <div style="font-family:'Space Mono',monospace;font-size:1rem;font-weight:700;color:var(--accent3)" id="todayDate">—</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── PERIOD TOGGLE ── -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <div class="sec-label" style="margin-bottom:0">Trend Charts</div>
+    <div style="display:flex;gap:6px">
+        <button class="period-btn active" data-period="7">7 Days</button>
+        <button class="period-btn" data-period="30">30 Days</button>
+    </div>
+</div>
+
+<style>
+.period-btn {
+    background: var(--bg-card2,#111c2d); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 14px; font-size: 0.75rem; font-family: 'Space Mono', monospace;
+    color: var(--text-muted); cursor: pointer; transition: all 0.18s;
+}
+.period-btn.active, .period-btn:hover {
+    background: rgba(0,212,255,0.1); border-color: var(--accent); color: var(--accent);
+}
+</style>
+
+<div class="grid-row grid-2" style="margin-bottom:20px">
+    <div class="neo-card">
+        <div class="c-label" style="margin-bottom:12px">Fatigue Trend</div>
+        <canvas id="fatigueChart" style="max-height:220px"></canvas>
+    </div>
+    <div class="neo-card">
+        <div class="c-label" style="margin-bottom:12px">Work Hours</div>
+        <canvas id="workChart" style="max-height:220px"></canvas>
+    </div>
+</div>
+
+<!-- ── HOURLY HEATMAP ── -->
+<div class="sec-label">Today's Hourly Fatigue Heatmap</div>
+<div class="neo-card" style="margin-bottom:20px">
+    <div class="c-label" style="margin-bottom:14px">Fatigue intensity by hour (today)</div>
+    <div id="heatmap" style="display:grid;grid-template-columns:repeat(24,1fr);gap:4px;"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:0.68rem;color:var(--text-muted)">
+        <span>Low</span>
+        <div style="display:flex;gap:2px">
+            <div style="width:14px;height:14px;border-radius:3px;background:rgba(0,229,160,0.3)"></div>
+            <div style="width:14px;height:14px;border-radius:3px;background:rgba(255,209,102,0.5)"></div>
+            <div style="width:14px;height:14px;border-radius:3px;background:rgba(255,77,109,0.8)"></div>
+        </div>
+        <span>High</span>
+        <span style="margin-left:12px;font-family:'Space Mono',monospace">Each cell = 1 hour</span>
+    </div>
+</div>
+
+<!-- ── BURNOUT DISTRIBUTION ── -->
+<div class="sec-label">Risk Distribution</div>
+<div class="grid-row grid-2">
+    <div class="neo-card">
+        <div class="c-label" style="margin-bottom:12px">Burnout Risk Breakdown (All Time)</div>
+        <canvas id="riskChart" style="max-height:200px"></canvas>
+    </div>
+    <div class="neo-card">
+        <div class="c-label" style="margin-bottom:12px">Fatigue vs Work Hours Correlation</div>
+        <canvas id="scatterChart" style="max-height:200px"></canvas>
+    </div>
+</div>
+
+<script>
+document.getElementById('todayDate').textContent = new Date().toLocaleDateString('en-IN',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+Chart.defaults.color = '#4d7a9e';
+Chart.defaults.borderColor = '#1a2e47';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+let fatigueChart, workChart;
+const scatterData = [];
+
+function fetchAndRender(period) {
+    fetch(`/analytics-data/?period=${period}`)
+    .then(r => r.json())
+    .then(data => {
+
+        // Fatigue chart
+        if (fatigueChart) fatigueChart.destroy();
+        fatigueChart = new Chart(document.getElementById('fatigueChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Avg Fatigue',
+                    data: data.fatigue,
+                    borderColor: '#00d4ff',
+                    backgroundColor: 'rgba(0,212,255,0.07)',
+                    fill: true, tension: 0.4, pointRadius: 5,
+                    pointBackgroundColor: data.fatigue.map(v => v > 0.7 ? '#ff4d6d' : v > 0.4 ? '#ffd166' : '#00e5a0'),
+                    pointBorderColor: '#060b12', pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#4d7a9e' } } },
+                scales: {
+                    x: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' } },
+                    y: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e', callback: v => (v*100).toFixed(0)+'%' }, min:0, max:1 }
+                }
+            }
+        });
+
+        // Work chart
+        if (workChart) workChart.destroy();
+        workChart = new Chart(document.getElementById('workChart'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Work Hours',
+                    data: data.work_hours,
+                    backgroundColor: data.work_hours.map(v => v > 8 ? 'rgba(255,77,109,0.5)' : 'rgba(123,92,240,0.5)'),
+                    borderColor: data.work_hours.map(v => v > 8 ? '#ff4d6d' : '#7b5cf0'),
+                    borderWidth: 1, borderRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#4d7a9e' } } },
+                scales: {
+                    x: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' } },
+                    y: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' }, min: 0 }
+                }
+            }
+        });
+
+        // Hourly heatmap
+        const hm = document.getElementById('heatmap');
+        hm.innerHTML = '';
+        (data.hourly || []).forEach((val, h) => {
+            const cell = document.createElement('div');
+            let bg = 'rgba(255,255,255,0.04)';
+            if (val !== null) {
+                if (val < 0.4) bg = `rgba(0,229,160,${0.15 + val * 0.6})`;
+                else if (val < 0.7) bg = `rgba(255,209,102,${0.2 + val * 0.6})`;
+                else bg = `rgba(255,77,109,${0.3 + val * 0.5})`;
+            }
+            cell.style.cssText = `height:32px;border-radius:4px;background:${bg};cursor:default;position:relative`;
+            cell.title = `${String(h).padStart(2,'0')}:00 — ${val !== null ? (val*100).toFixed(0)+'% fatigue' : 'No data'}`;
+            const lbl = document.createElement('div');
+            lbl.style.cssText = 'position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);font-size:0.5rem;color:#2a4060;font-family:Space Mono,monospace;white-space:nowrap';
+            lbl.textContent = h % 3 === 0 ? `${h}h` : '';
+            cell.appendChild(lbl);
+            hm.appendChild(cell);
+        });
+
+        // Scatter data (fatigue vs work)
+        const pts = data.labels.map((l, i) => ({x: data.work_hours[i], y: data.fatigue[i]}));
+        if (window._scatter) window._scatter.destroy();
+        window._scatter = new Chart(document.getElementById('scatterChart'), {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: 'Sessions',
+                    data: pts,
+                    backgroundColor: pts.map(p => p.y > 0.7 ? 'rgba(255,77,109,0.7)' : p.y > 0.4 ? 'rgba(255,209,102,0.7)' : 'rgba(0,229,160,0.7)'),
+                    pointRadius: 6, pointHoverRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#4d7a9e' } } },
+                scales: {
+                    x: { title: { display: true, text: 'Work Hours', color: '#4d7a9e' }, grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' } },
+                    y: { title: { display: true, text: 'Avg Fatigue', color: '#4d7a9e' }, grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e', callback: v => (v*100).toFixed(0)+'%' }, min:0, max:1 }
+                }
+            }
+        });
+    });
+}
+
+// Risk donut chart (static from template data)
+new Chart(document.getElementById('riskChart'), {
+    type: 'doughnut',
+    data: {
+        labels: ['Low Risk', 'Medium Risk', 'High Risk'],
+        datasets: [{ data: [
+            {{ high_risk_days|add:0 }},
+            Math.max(0, {{ total_sessions }} - {{ high_risk_days }}),
+            {{ high_risk_days }}
+        ], backgroundColor: ['rgba(0,229,160,0.7)', 'rgba(255,209,102,0.7)', 'rgba(255,77,109,0.7)'],
+        borderColor: ['#00e5a0', '#ffd166', '#ff4d6d'], borderWidth: 1 }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { labels: { color: '#4d7a9e' } }
+        },
+        cutout: '65%'
+    }
+});
+
+// Period toggle
+document.querySelectorAll('.period-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        fetchAndRender(this.dataset.period);
+    });
+});
+
+fetchAndRender(7);
+</script>
+{% endblock %}

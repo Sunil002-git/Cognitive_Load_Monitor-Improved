@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block nav_alerts %}active{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div>
+        <div class="page-title" style="font-family:'Space Mono',monospace;font-size:1.1rem;font-weight:700">Alert History</div>
+        <div class="page-sub" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">Fatigue, posture & break reminders log</div>
+    </div>
+    {% if counts.unread > 0 %}
+    <button onclick="ackAll()" style="
+        display:inline-flex;align-items:center;gap:8px;
+        background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);
+        border-radius:8px;padding:8px 16px;font-size:0.8rem;font-weight:600;
+        color:var(--accent);cursor:pointer;transition:all 0.2s;font-family:'DM Sans',sans-serif;
+    ">
+        <i class="bi bi-check2-all"></i> Mark all read
+    </button>
+    {% endif %}
+</div>
+
+<!-- ── COUNT CARDS ── -->
+<div class="grid-row" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
+    <div class="neo-card" style="text-align:center;padding:14px 10px">
+        <div class="c-label">Total</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700;color:var(--text-primary)">{{ counts.total }}</div>
+    </div>
+    <div class="neo-card" style="text-align:center;padding:14px 10px">
+        <div class="c-label">Unread</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700;color:var(--danger)">{{ counts.unread }}</div>
+    </div>
+    <div class="neo-card" style="text-align:center;padding:14px 10px">
+        <div class="c-label">Fatigue</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700;color:var(--warning)">{{ counts.fatigue }}</div>
+    </div>
+    <div class="neo-card" style="text-align:center;padding:14px 10px">
+        <div class="c-label">Posture</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700;color:var(--accent2)">{{ counts.posture }}</div>
+    </div>
+    <div class="neo-card" style="text-align:center;padding:14px 10px">
+        <div class="c-label">Breaks</div>
+        <div style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700;color:var(--accent3)">{{ counts.break }}</div>
+    </div>
+</div>
+
+<!-- ── FILTER TABS ── -->
+<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+    <button class="tab-btn active" data-type="">All</button>
+    <button class="tab-btn" data-type="fatigue_high">High Fatigue</button>
+    <button class="tab-btn" data-type="fatigue_med">Med Fatigue</button>
+    <button class="tab-btn" data-type="posture">Posture</button>
+    <button class="tab-btn" data-type="break">Break</button>
+    <button class="tab-btn" data-type="burnout_high">Burnout</button>
+</div>
+
+<style>
+.tab-btn {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+    padding: 5px 14px; font-size: 0.72rem; font-family: 'Space Mono', monospace;
+    color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+}
+.tab-btn.active, .tab-btn:hover { background: rgba(0,212,255,0.08); border-color: var(--accent); color: var(--accent); }
+</style>
+
+<!-- ── ALERT LIST ── -->
+<div class="neo-card" style="padding:0;overflow:hidden">
+{% if alerts %}
+    {% for alert in alerts %}
+    <div class="alert-row" data-type="{{ alert.alert_type }}" data-id="{{ alert.id }}"
+        style="display:flex;align-items:flex-start;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border);
+               transition:background 0.15s;{% if not alert.acknowledged %}background:rgba(0,212,255,0.02){% endif %}">
+
+        <!-- Icon -->
+        <div style="width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;margin-top:2px;
+            {% if alert.alert_type == 'fatigue_high' %}background:rgba(255,77,109,0.12);color:#ff4d6d
+            {% elif alert.alert_type == 'fatigue_med' %}background:rgba(255,209,102,0.12);color:#ffd166
+            {% elif alert.alert_type == 'posture' %}background:rgba(123,92,240,0.12);color:#7b5cf0
+            {% elif alert.alert_type == 'break' %}background:rgba(0,229,160,0.12);color:#00e5a0
+            {% else %}background:rgba(255,77,109,0.12);color:#ff4d6d{% endif %}">
+            {% if alert.alert_type == 'fatigue_high' or alert.alert_type == 'fatigue_med' %}<i class="bi bi-activity"></i>
+            {% elif alert.alert_type == 'posture' %}<i class="bi bi-person-standing"></i>
+            {% elif alert.alert_type == 'break' %}<i class="bi bi-cup-hot"></i>
+            {% else %}<i class="bi bi-exclamation-triangle"></i>{% endif %}
+        </div>
+
+        <!-- Content -->
+        <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary)">
+                    {% if alert.alert_type == 'fatigue_high' %}High Fatigue Alert
+                    {% elif alert.alert_type == 'fatigue_med' %}Fatigue Warning
+                    {% elif alert.alert_type == 'posture' %}Poor Posture
+                    {% elif alert.alert_type == 'break' %}Break Reminder
+                    {% else %}Burnout Risk{% endif %}
+                </span>
+                {% if not alert.acknowledged %}
+                <span style="width:7px;height:7px;background:var(--accent);border-radius:50%;display:inline-block;flex-shrink:0"></span>
+                {% endif %}
+            </div>
+            <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.5">{{ alert.message }}</div>
+            <div style="margin-top:4px;font-size:0.65rem;color:var(--text-dim);font-family:'Space Mono',monospace">
+                {{ alert.timestamp|date:"d M Y, h:i A" }}
+                &nbsp;·&nbsp; Value: {{ alert.value|floatformat:2 }}
+            </div>
+        </div>
+
+        <!-- Ack button -->
+        {% if not alert.acknowledged %}
+        <button onclick="ackAlert({{ alert.id }}, this)"
+            style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 10px;
+                   font-size:0.65rem;color:var(--text-muted);cursor:pointer;font-family:'Space Mono',monospace;
+                   white-space:nowrap;transition:all 0.15s;flex-shrink:0"
+            onmouseover="this.style.borderColor='var(--accent3)';this.style.color='var(--accent3)'"
+            onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-muted)'">
+            ✓ Read
+        </button>
+        {% endif %}
+    </div>
+    {% endfor %}
+{% else %}
+    <div style="padding:60px;text-align:center;color:var(--text-muted);font-size:0.85rem">
+        <div style="font-size:2rem;margin-bottom:10px">🔔</div>
+        No alerts yet. Start a monitoring session to generate alerts.
+    </div>
+{% endif %}
+</div>
+
+<script>
+function getCookie(n){ let v=null; document.cookie.split(';').forEach(c=>{c=c.trim();if(c.startsWith(n+'='))v=decodeURIComponent(c.slice(n.length+1));}); return v; }
+
+function ackAlert(id, btn) {
+    fetch(`/alerts/acknowledge/${id}/`, {
+        method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')}
+    }).then(() => {
+        const row = btn.closest('.alert-row');
+        btn.remove();
+        row.style.background = 'transparent';
+        row.querySelector('[style*="width:7px"]')?.remove();
+    });
+}
+
+function ackAll() {
+    fetch('/alerts/acknowledge-all/', {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}})
+    .then(() => location.reload());
+}
+
+// Tab filter
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        const type = this.dataset.type;
+        document.querySelectorAll('.alert-row').forEach(row => {
+            row.style.display = (!type || row.dataset.type === type) ? '' : 'none';
+        });
+    });
+});
+</script>
+{% endblock %}

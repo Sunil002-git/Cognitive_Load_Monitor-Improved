@@ -151,12 +151,17 @@
     </div>
     <nav class="sidebar-nav">
         <div class="nav-label">Monitor</div>
-        <a href="/" class="s-link active"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
-        <a href="#" class="s-link"><i class="bi bi-bar-chart-line-fill"></i> Analytics</a>
-        <a href="#" class="s-link"><i class="bi bi-file-earmark-bar-graph"></i> Reports</a>
+        <a href="/" class="s-link {% block nav_dash %}{% endblock %}"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
+        <a href="/analytics/" class="s-link {% block nav_analytics %}{% endblock %}"><i class="bi bi-bar-chart-line-fill"></i> Analytics</a>
+        <a href="/reports/" class="s-link {% block nav_reports %}{% endblock %}"><i class="bi bi-file-earmark-bar-graph"></i> Reports</a>
         <div class="nav-label">System</div>
-        <a href="#" class="s-link"><i class="bi bi-bell"></i> Alerts</a>
-        <a href="#" class="s-link"><i class="bi bi-sliders"></i> Settings</a>
+        <a href="/alerts/" class="s-link {% block nav_alerts %}{% endblock %}" style="position:relative">
+            <i class="bi bi-bell"></i> Alerts
+            {% if user.is_authenticated %}
+            <span id="alertBadge" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:var(--danger);color:#fff;font-size:0.55rem;font-family:'Space Mono',monospace;border-radius:10px;padding:1px 6px;min-width:18px;text-align:center"></span>
+            {% endif %}
+        </a>
+        <a href="/settings/" class="s-link {% block nav_settings %}{% endblock %}"><i class="bi bi-sliders"></i> Settings</a>
     </nav>
     <div class="sidebar-footer">
         <div class="user-row">
@@ -188,6 +193,19 @@
         setInterval(()=>{
             document.getElementById('clk').textContent = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
         }, 1000);
+        // Poll unread alerts
+        {% if user.is_authenticated %}
+        function pollAlerts(){
+            fetch('/alerts/').then(r => r.text()).then(html => {
+                // We just check via a dedicated endpoint instead
+            }).catch(()=>{});
+        }
+        // Simple badge: count from server every 30s
+        function updateBadge(){
+            fetch('/alerts/acknowledge-all/', {method:'POST', headers:{'X-CSRFToken': getCookie('csrftoken')}});
+        }
+        function getCookie(n){ let v=null; document.cookie.split(';').forEach(c=>{c=c.trim(); if(c.startsWith(n+'=')) v=decodeURIComponent(c.slice(n.length+1));}); return v; }
+        {% endif %}
     })();
 </script>
 </body>
