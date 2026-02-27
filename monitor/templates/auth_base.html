@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroWatch — {% block title %}Auth{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #060b12; --bg-card: #0b1520; --border: #1a2e47;
+            --accent: #00d4ff; --accent2: #7b5cf0; --accent3: #00e5a0;
+            --danger: #ff4d6d; --text-primary: #ddeeff; --text-muted: #4d7a9e;
+        }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-deep); color: var(--text-primary);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            background-image:
+                radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,212,255,0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 40% at 90% 100%, rgba(123,92,240,0.08) 0%, transparent 60%);
+        }
+
+        .auth-split { display:flex; width:100%; min-height:100vh; }
+
+        /* LEFT PANEL */
+        .auth-left {
+            flex: 0 0 420px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            align-items: flex-start; justify-content: center;
+            padding: 60px 48px;
+            position: relative; overflow: hidden;
+        }
+        .auth-left::before {
+            content:'';
+            position:absolute; top:0; right:0; width:1px; height:100%;
+            background:linear-gradient(to bottom,transparent,var(--accent),transparent);
+            opacity:0.3;
+        }
+        .auth-glow {
+            position:absolute; top:-80px; left:-80px;
+            width:300px; height:300px;
+            background: radial-gradient(circle, rgba(0,212,255,0.08) 0%, transparent 70%);
+            border-radius:50%; pointer-events:none;
+        }
+        .brand-logo { font-family:'Space Mono',monospace; font-size:1.5rem; font-weight:700; color:var(--accent); letter-spacing:0.05em; margin-bottom:6px; }
+        .brand-tagline { font-size:0.75rem; color:var(--text-muted); letter-spacing:0.12em; text-transform:uppercase; margin-bottom:40px; }
+
+        .feature-list { list-style:none; display:flex; flex-direction:column; gap:16px; }
+        .feature-item { display:flex; align-items:flex-start; gap:12px; }
+        .feat-icon { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.9rem; flex-shrink:0; margin-top:2px; }
+        .feat-title { font-size:0.84rem; font-weight:600; color:var(--text-primary); margin-bottom:2px; }
+        .feat-desc  { font-size:0.72rem; color:var(--text-muted); line-height:1.5; }
+
+        .auth-footer-note { margin-top:48px; font-size:0.65rem; color:var(--text-muted); font-family:'Space Mono',monospace; letter-spacing:0.05em; }
+
+        /* RIGHT PANEL */
+        .auth-right {
+            flex: 1;
+            display: flex; align-items: center; justify-content: center;
+            padding: 40px 32px;
+        }
+
+        .auth-card {
+            width: 100%; max-width: 400px;
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 16px; padding: 40px;
+            position: relative; overflow: hidden;
+        }
+        .auth-card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(0,212,255,0.4),transparent); }
+
+        .auth-title { font-family:'Space Mono',monospace; font-size:1.2rem; font-weight:700; color:var(--text-primary); margin-bottom:4px; }
+        .auth-sub { font-size:0.78rem; color:var(--text-muted); margin-bottom:28px; }
+
+        .form-group { margin-bottom:18px; }
+        .form-label { display:block; font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); font-family:'Space Mono',monospace; margin-bottom:7px; }
+        .form-input {
+            width:100%; background:var(--bg-deep); border:1px solid var(--border); border-radius:8px;
+            padding:11px 14px; font-size:0.88rem; color:var(--text-primary);
+            font-family:'DM Sans',sans-serif; transition:border-color 0.2s; outline:none;
+        }
+        .form-input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,212,255,0.08); }
+        .form-input::placeholder { color:var(--text-muted); }
+
+        /* Django form fields */
+        .form-group p label { display:block; font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-muted); font-family:'Space Mono',monospace; margin-bottom:7px; }
+        .form-group p input, p input[type="text"], p input[type="password"] {
+            width:100%; background:var(--bg-deep); border:1px solid var(--border); border-radius:8px;
+            padding:11px 14px; font-size:0.88rem; color:var(--text-primary);
+            font-family:'DM Sans',sans-serif; transition:border-color 0.2s; outline:none; margin-bottom:8px;
+        }
+        p input:focus { border-color:var(--accent); box-shadow:0 0 0 2px rgba(0,212,255,0.08); }
+        ul { list-style:none; padding-left:0; }
+        ul li { font-size:0.7rem; color:var(--text-muted); margin-bottom:2px; }
+        p { margin-bottom:14px; }
+
+        .btn-primary-nw {
+            width:100%; padding:12px; border-radius:8px; border:none; cursor:pointer;
+            background:linear-gradient(135deg,var(--accent),var(--accent2));
+            color:#fff; font-size:0.9rem; font-weight:600; font-family:'DM Sans',sans-serif;
+            transition:opacity 0.2s, transform 0.1s; margin-top:4px;
+        }
+        .btn-primary-nw:hover { opacity:0.88; transform:translateY(-1px); }
+        .btn-primary-nw:active { transform:translateY(0); }
+
+        .auth-link { text-align:center; margin-top:20px; font-size:0.78rem; color:var(--text-muted); }
+        .auth-link a { color:var(--accent); text-decoration:none; font-weight:500; }
+        .auth-link a:hover { text-decoration:underline; }
+
+        .alert-error {
+            background:rgba(255,77,109,0.1); border:1px solid rgba(255,77,109,0.3);
+            border-radius:8px; padding:10px 14px; font-size:0.8rem; color:#ff4d6d;
+            margin-bottom:16px; display:flex; align-items:center; gap:8px;
+        }
+
+        @media(max-width:700px){ .auth-left{display:none} }
+    </style>
+</head>
+<body>
+<div class="auth-split">
+    <!-- LEFT: Branding -->
+    <div class="auth-left">
+        <div class="auth-glow"></div>
+        <div class="brand-logo">⚡ NeuroWatch</div>
+        <div class="brand-tagline">Cognitive Load Monitor</div>
+        <ul class="feature-list">
+            <li class="feature-item">
+                <div class="feat-icon" style="background:rgba(0,212,255,0.1);color:var(--accent)"><i class="bi bi-camera-video"></i></div>
+                <div>
+                    <div class="feat-title">Real-Time Eye Tracking</div>
+                    <div class="feat-desc">MediaPipe-powered blink detection and eye closure analysis via your webcam.</div>
+                </div>
+            </li>
+            <li class="feature-item">
+                <div class="feat-icon" style="background:rgba(0,229,160,0.1);color:var(--accent3)"><i class="bi bi-graph-up-arrow"></i></div>
+                <div>
+                    <div class="feat-title">ML Fatigue Prediction</div>
+                    <div class="feat-desc">AI model predicts fatigue probability from biometric signals in real time.</div>
+                </div>
+            </li>
+            <li class="feature-item">
+                <div class="feat-icon" style="background:rgba(123,92,240,0.1);color:var(--accent2)"><i class="bi bi-shield-check"></i></div>
+                <div>
+                    <div class="feat-title">Burnout Prevention</div>
+                    <div class="feat-desc">Smart alerts and analytics to prevent cognitive overload before it happens.</div>
+                </div>
+            </li>
+        </ul>
+        <div class="auth-footer-note">MCA Final Year Project · 2025–26</div>
+    </div>
+
+    <!-- RIGHT: Form -->
+    <div class="auth-right">
+        <div class="auth-card">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</div>
+</body>
+</html>

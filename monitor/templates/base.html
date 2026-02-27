@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroWatch — Cognitive Load Monitor</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+    {% block extra_head %}{% endblock %}
+
+    <style>
+        :root {
+            --bg-deep:      #060b12;
+            --bg-card:      #0b1520;
+            --bg-card2:     #0f1e30;
+            --border:       #1a2e47;
+            --accent:       #00d4ff;
+            --accent2:      #7b5cf0;
+            --accent3:      #00e5a0;
+            --danger:       #ff4d6d;
+            --warning:      #ffd166;
+            --text-primary: #ddeeff;
+            --text-muted:   #4d7a9e;
+            --text-dim:     #1e3a55;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            background-image:
+                radial-gradient(ellipse 70% 40% at 15% 5%, rgba(0,212,255,0.05) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 30% at 85% 90%, rgba(123,92,240,0.06) 0%, transparent 60%);
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* SIDEBAR */
+        .sidebar {
+            position: fixed; top: 0; left: 0;
+            width: 230px; height: 100vh;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            z-index: 100;
+        }
+        .sidebar-brand { padding: 24px 20px 18px; border-bottom: 1px solid var(--border); }
+        .logo-text { font-family: 'Space Mono', monospace; font-size: 1rem; font-weight: 700; color: var(--accent); letter-spacing: 0.05em; }
+        .logo-sub { font-size: 0.6rem; color: var(--text-muted); letter-spacing: 0.14em; text-transform: uppercase; margin-top: 3px; }
+        .live-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(0,229,160,0.08); border: 1px solid rgba(0,229,160,0.25);
+            border-radius: 20px; padding: 3px 10px;
+            font-size: 0.6rem; color: var(--accent3);
+            font-family: 'Space Mono', monospace; margin-top: 10px;
+        }
+        .live-pill .dot { width: 5px; height: 5px; background: var(--accent3); border-radius: 50%; animation: blink 2s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        .sidebar-nav { flex: 1; padding: 16px 12px; }
+        .nav-label { font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); font-family: 'Space Mono', monospace; padding: 0 8px; margin: 16px 0 6px; }
+        .s-link {
+            display: flex; align-items: center; gap: 11px;
+            padding: 9px 10px; border-radius: 8px;
+            color: var(--text-muted); text-decoration: none;
+            font-size: 0.84rem; font-weight: 500; transition: all 0.18s; margin-bottom: 2px;
+        }
+        .s-link:hover, .s-link.active { background: rgba(0,212,255,0.07); color: var(--accent); }
+        .s-link i { font-size: 0.95rem; width: 17px; }
+
+        .sidebar-footer { padding: 14px 12px; border-top: 1px solid var(--border); }
+        .user-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,0.02); }
+        .u-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-family: 'Space Mono', monospace; font-size: 0.7rem; font-weight: 700; color: #fff; flex-shrink: 0; }
+        .u-name { font-size: 0.8rem; font-weight: 500; color: var(--text-primary); line-height: 1.2; }
+        .u-role { font-size: 0.62rem; color: var(--text-muted); }
+        .logout-link { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; color: var(--danger); text-decoration: none; font-size: 0.8rem; font-weight: 500; transition: all 0.18s; margin-top: 6px; }
+        .logout-link:hover { background: rgba(255,77,109,0.07); color: var(--danger); }
+
+        /* MAIN */
+        .main-wrap { margin-left: 230px; min-height: 100vh; padding: 28px 30px; }
+        .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+        .page-title { font-family: 'Space Mono', monospace; font-size: 1.3rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+        .page-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 3px; }
+        .clock-badge { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--text-muted); background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 14px; }
+
+        /* CARDS */
+        .neo-card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; padding: 18px; position: relative; overflow: hidden;
+            transition: border-color 0.2s;
+        }
+        .neo-card:hover { border-color: rgba(0,212,255,0.18); }
+        .neo-card::before { content:''; position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(0,212,255,0.2),transparent); }
+        .c-label { font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); font-family: 'Space Mono', monospace; margin-bottom: 6px; }
+        .c-value { font-family: 'Space Mono', monospace; font-size: 1.8rem; font-weight: 700; line-height: 1; }
+        .c-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 5px; }
+        .c-icon { position:absolute; top:16px; right:16px; width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:0.95rem; }
+        .i-cyan   { background:rgba(0,212,255,0.1);   color:var(--accent); }
+        .i-green  { background:rgba(0,229,160,0.1);   color:var(--accent3); }
+        .i-purple { background:rgba(123,92,240,0.1);  color:var(--accent2); }
+        .i-danger { background:rgba(255,77,109,0.1);  color:var(--danger); }
+        .i-warn   { background:rgba(255,209,102,0.1); color:var(--warning); }
+        .col-cyan   { color: var(--accent); }
+        .col-green  { color: var(--accent3); }
+        .col-purple { color: var(--accent2); }
+        .col-danger { color: var(--danger); }
+        .col-warn   { color: var(--warning); }
+
+        /* SECTION LABELS */
+        .sec-label { font-family: 'Space Mono', monospace; font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; display:flex; align-items:center; gap:8px; }
+        .sec-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+        /* BREAK ALERT */
+        .break-alert { display:none; background:linear-gradient(135deg,rgba(255,77,109,0.12),rgba(255,77,109,0.04)); border:1px solid rgba(255,77,109,0.35); border-radius:10px; padding:12px 18px; margin-bottom:18px; align-items:center; gap:12px; }
+        .break-alert.show { display:flex; animation:alertGlow 2.5s infinite; }
+        @keyframes alertGlow { 0%,100%{border-color:rgba(255,77,109,0.35)} 50%{border-color:rgba(255,77,109,0.7)} }
+        .ba-icon { font-size:1.2rem; color:var(--danger); }
+        .ba-title { font-size:0.83rem; font-weight:600; color:var(--text-primary); }
+        .ba-sub   { font-size:0.71rem; color:var(--text-muted); }
+
+        /* VIDEO */
+        video { transform:scaleX(-1); border-radius:9px; width:100%; display:block; background:#000; min-height:200px; }
+        .vid-wrap { position:relative; }
+        .vid-tag { position:absolute; top:8px; left:8px; display:flex; align-items:center; gap:5px; background:rgba(0,0,0,0.65); border:1px solid rgba(0,212,255,0.25); border-radius:14px; padding:3px 10px; font-size:0.62rem; font-family:'Space Mono',monospace; color:var(--accent); backdrop-filter:blur(4px); }
+
+        /* RISK BADGES */
+        .rbadge { display:inline-block; padding:3px 12px; border-radius:14px; font-family:'Space Mono',monospace; font-size:0.7rem; font-weight:700; letter-spacing:0.04em; }
+        .rbadge-low    { background:rgba(0,229,160,0.1); color:var(--accent3); border:1px solid rgba(0,229,160,0.25); }
+        .rbadge-medium { background:rgba(255,209,102,0.1); color:var(--warning); border:1px solid rgba(255,209,102,0.25); }
+        .rbadge-high   { background:rgba(255,77,109,0.1); color:var(--danger); border:1px solid rgba(255,77,109,0.25); }
+
+        /* ROW / GRID */
+        .grid-row { display:grid; gap:16px; margin-bottom:20px; }
+        .grid-4 { grid-template-columns:repeat(4,1fr); }
+        .grid-2 { grid-template-columns:1fr 1fr; }
+        .grid-3 { grid-template-columns:1.2fr 0.8fr 1fr; }
+        @media(max-width:1100px){ .grid-4{grid-template-columns:1fr 1fr} .grid-3{grid-template-columns:1fr 1fr} }
+        @media(max-width:700px){ .grid-4,.grid-2,.grid-3{grid-template-columns:1fr} .main-wrap{margin-left:0;padding:16px} .sidebar{display:none} }
+    </style>
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-brand">
+        <div class="logo-text">⚡ NeuroWatch</div>
+        <div class="logo-sub">Cognitive Load Monitor</div>
+        <div class="live-pill"><span class="dot"></span> LIVE</div>
+    </div>
+    <nav class="sidebar-nav">
+        <div class="nav-label">Monitor</div>
+        <a href="/" class="s-link active"><i class="bi bi-grid-1x2-fill"></i> Dashboard</a>
+        <a href="#" class="s-link"><i class="bi bi-bar-chart-line-fill"></i> Analytics</a>
+        <a href="#" class="s-link"><i class="bi bi-file-earmark-bar-graph"></i> Reports</a>
+        <div class="nav-label">System</div>
+        <a href="#" class="s-link"><i class="bi bi-bell"></i> Alerts</a>
+        <a href="#" class="s-link"><i class="bi bi-sliders"></i> Settings</a>
+    </nav>
+    <div class="sidebar-footer">
+        <div class="user-row">
+            <div class="u-avatar" id="uAvatar">U</div>
+            <div>
+                <div class="u-name">{% if user.is_authenticated %}{{ user.username }}{% else %}Guest{% endif %}</div>
+                <div class="u-role">Active Session</div>
+            </div>
+        </div>
+        <a href="/logout/" class="logout-link"><i class="bi bi-box-arrow-left"></i> Sign Out</a>
+    </div>
+</aside>
+
+<main class="main-wrap">
+    <div class="top-bar">
+        <div>
+            <div class="page-title">Cognitive Dashboard</div>
+            <div class="page-sub">Real-time fatigue &amp; burnout intelligence</div>
+        </div>
+        <div class="clock-badge" id="clk">--:--:--</div>
+    </div>
+    {% block content %}{% endblock %}
+</main>
+
+<script>
+    (function(){
+        const u = "{% if user.is_authenticated %}{{ user.username }}{% endif %}";
+        if(u) document.getElementById('uAvatar').textContent = u[0].toUpperCase();
+        setInterval(()=>{
+            document.getElementById('clk').textContent = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        }, 1000);
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{% extends 'auth_base.html' %}
+{% block title %}Create Account{% endblock %}
+{% block content %}
+<div class="auth-title">Create Account</div>
+<div class="auth-sub">Join NeuroWatch and start monitoring</div>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+        {{ form.as_p }}
+    </div>
+    <button type="submit" class="btn-primary-nw">Create Account &rarr;</button>
+</form>
+
+<div class="auth-link">
+    Already have an account? <a href="/login/">Sign in</a>
+</div>
+{% endblock %}

@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-gauge@0.3.0/dist/chartjs-chart-gauge.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── BREAK ALERT ── -->
+<div class="break-alert" id="breakAlert">
+    <span class="ba-icon bi bi-exclamation-triangle-fill"></span>
+    <div>
+        <div class="ba-title">⚠️ Break Recommended</div>
+        <div class="ba-sub">You've been active for over 45 minutes. Rest your eyes for 5–10 minutes.</div>
+    </div>
+</div>
+
+<!-- ── STAT CARDS ── -->
+<div class="grid-row grid-4">
+
+    <div class="neo-card">
+        <div class="c-icon i-danger"><i class="bi bi-activity"></i></div>
+        <div class="c-label">Burnout Risk</div>
+        <div class="c-value
+            {% if burnout_risk == 'Low' %}col-green
+            {% elif burnout_risk == 'Medium' %}col-warn
+            {% else %}col-danger{% endif %}" id="burnoutRiskVal">
+            {{ burnout_risk }}
+        </div>
+        <div class="c-meta">Score: <span style="color:var(--text-primary);font-family:'Space Mono',monospace">{{ burnout_score }}</span>
+            &nbsp;<span class="rbadge {% if burnout_risk == 'Low' %}rbadge-low{% elif burnout_risk == 'Medium' %}rbadge-medium{% else %}rbadge-high{% endif %}">{{ burnout_risk }}</span>
+        </div>
+    </div>
+
+    <div class="neo-card">
+        <div class="c-icon i-cyan"><i class="bi bi-eye"></i></div>
+        <div class="c-label">Blink Count</div>
+        <div class="c-value col-cyan" id="blinkCount">0</div>
+        <div class="c-meta">Session blinks detected</div>
+    </div>
+
+    <div class="neo-card">
+        <div class="c-icon i-purple"><i class="bi bi-person-standing"></i></div>
+        <div class="c-label">Posture Status</div>
+        <div class="c-value col-green" id="postureStatus">Waiting...</div>
+        <div class="c-meta" id="tiltValue">Tilt: —</div>
+    </div>
+
+    <div class="neo-card">
+        <div class="c-icon i-green"><i class="bi bi-clock-history"></i></div>
+        <div class="c-label">Session Duration</div>
+        <div class="c-value col-green" id="sessionTimer">00:00</div>
+        <div class="c-meta">Active monitoring time</div>
+    </div>
+
+</div>
+
+<!-- ── LIVE + GAUGE ── -->
+<div class="sec-label">Live Monitor</div>
+<div class="grid-row grid-2" style="margin-bottom:20px">
+
+    <div class="neo-card" style="padding:0;overflow:hidden">
+        <!-- Camera loading state -->
+        <div id="camStatus" style="
+            position:absolute; inset:0; display:flex; flex-direction:column;
+            align-items:center; justify-content:center; gap:10px;
+            background:rgba(6,11,18,0.9); z-index:10; border-radius:12px;
+            font-family:'Space Mono',monospace; font-size:0.72rem; color:var(--text-muted);
+        ">
+            <div id="camSpinner" style="width:36px;height:36px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite"></div>
+            <span id="camStatusText">Requesting camera access...</span>
+        </div>
+        <div class="vid-wrap" style="position:relative">
+            <video id="videoEl" autoplay playsinline muted style="transform:scaleX(-1);border-radius:9px;width:100%;display:block;background:#000;min-height:220px"></video>
+            <div class="vid-tag">
+                <span id="liveDot" style="width:5px;height:5px;background:var(--text-muted);border-radius:50%;display:inline-block"></span>
+                &nbsp;<span id="liveLabel">INITIALISING</span>
+            </div>
+            <!-- Canvas overlay for face mesh (hidden) -->
+            <canvas id="faceCanvas" style="display:none"></canvas>
+        </div>
+        <div style="padding:12px 16px">
+            <div class="c-label">Camera Feed — MediaPipe Face Mesh</div>
+            <div id="alertMsg" style="font-size:0.78rem;color:var(--danger);min-height:18px"></div>
+        </div>
+    </div>
+
+    <div class="neo-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+        <div class="c-label" style="margin-bottom:8px">Fatigue Severity Index</div>
+        <canvas id="fatigueGauge" style="max-height:200px;max-width:280px"></canvas>
+        <div style="margin-top:10px;text-align:center">
+            <div style="font-family:'Space Mono',monospace;font-size:1.5rem;font-weight:700" id="gaugeVal">0.00</div>
+            <div class="c-meta">Current fatigue probability</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── ANALYTICS ── -->
+<div class="sec-label">7-Day Analytics</div>
+<div class="grid-row grid-2">
+    <div class="neo-card">
+        <div class="c-label" style="margin-bottom:12px">Fatigue Trend</div>
+        <canvas id="fatigueChart" style="max-height:200px"></canvas>
+    </div>
+    <div class="neo-card">
+        <div class="c-label" style="margin-bottom:12px">Work Hours</div>
+        <canvas id="workChart" style="max-height:200px"></canvas>
+    </div>
+</div>
+
+<!-- ── TIPS ── -->
+<div class="sec-label" style="margin-top:20px">Wellness Tips</div>
+<div class="grid-row grid-3">
+    <div class="neo-card" style="border-left:3px solid var(--accent)">
+        <div style="font-size:1.2rem;margin-bottom:8px">👁️</div>
+        <div style="font-size:0.82rem;font-weight:600;margin-bottom:4px">20-20-20 Rule</div>
+        <div style="font-size:0.75rem;color:var(--text-muted)">Every 20 min, look at something 20 feet away for 20 seconds to reduce eye strain.</div>
+    </div>
+    <div class="neo-card" style="border-left:3px solid var(--accent3)">
+        <div style="font-size:1.2rem;margin-bottom:8px">🧘</div>
+        <div style="font-size:0.82rem;font-weight:600;margin-bottom:4px">Micro Breaks</div>
+        <div style="font-size:0.75rem;color:var(--text-muted)">Take a 5-minute break after every 45–50 minutes of focused work to prevent burnout.</div>
+    </div>
+    <div class="neo-card" style="border-left:3px solid var(--accent2)">
+        <div style="font-size:1.2rem;margin-bottom:8px">💧</div>
+        <div style="font-size:0.82rem;font-weight:600;margin-bottom:4px">Stay Hydrated</div>
+        <div style="font-size:0.75rem;color:var(--text-muted)">Dehydration increases fatigue. Drink at least 8 glasses of water during your workday.</div>
+    </div>
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+<script>
+/* ─── CONSTANTS ─── */
+const LEFT_EYE  = [33,160,158,133,153,144];
+const RIGHT_EYE = [362,385,387,263,373,380];
+let blinkCount = 0, eyeClosedFrames = 0;
+let fatigueGaugeChart = null;
+let sessionStart = Date.now();
+let meshReady = false;
+let sendThrottle = 0;
+
+/* ─── UTILS ─── */
+function dist(a, b) {
+    return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+function calcEAR(lm, eye) {
+    return (dist(lm[eye[1]], lm[eye[5]]) + dist(lm[eye[2]], lm[eye[4]])) /
+           (2.0 * dist(lm[eye[0]], lm[eye[3]]));
+}
+function getCookie(name) {
+    let v = null;
+    document.cookie.split(';').forEach(c => {
+        c = c.trim();
+        if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
+    });
+    return v;
+}
+
+/* ─── CAMERA STATUS UI ─── */
+function setCamStatus(text, isError = false) {
+    document.getElementById('camStatusText').textContent = text;
+    if (isError) {
+        document.getElementById('camSpinner').style.borderTopColor = 'var(--danger)';
+        document.getElementById('camStatusText').style.color = 'var(--danger)';
+    }
+}
+function hideCamOverlay() {
+    const overlay = document.getElementById('camStatus');
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.5s';
+    setTimeout(() => { overlay.style.display = 'none'; }, 500);
+    // Go live
+    document.getElementById('liveDot').style.background = 'var(--accent3)';
+    document.getElementById('liveDot').style.animation = 'blink 1.5s infinite';
+    document.getElementById('liveLabel').textContent = 'LIVE';
+}
+
+/* ─── SESSION TIMER ─── */
+setInterval(() => {
+    const s = Math.floor((Date.now() - sessionStart) / 1000);
+    const m = Math.floor(s / 60), sec = s % 60;
+    document.getElementById('sessionTimer').textContent =
+        String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+    if (m >= 45) document.getElementById('breakAlert').classList.add('show');
+    else document.getElementById('breakAlert').classList.remove('show');
+}, 1000);
+
+/* ─── FACE MESH SETUP ─── */
+let faceMesh;
+
+function initFaceMesh() {
+    faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+    });
+    faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: false,       // false = faster init
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onFaceMeshResults);
+    return faceMesh;
+}
+
+function onFaceMeshResults(results) {
+    if (!meshReady) {
+        meshReady = true;
+        hideCamOverlay();
+    }
+
+    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        document.getElementById('postureStatus').textContent = 'No Face';
+        document.getElementById('postureStatus').className = 'c-value col-warn';
+        document.getElementById('alertMsg').textContent = '👤 No face detected — move closer to camera';
+        return;
+    }
+
+    const lm = results.multiFaceLandmarks[0];
+
+    /* Blink detection via EAR */
+    const avgEAR = (calcEAR(lm, LEFT_EYE) + calcEAR(lm, RIGHT_EYE)) / 2;
+    if (avgEAR < 0.20) {
+        eyeClosedFrames++;
+    } else {
+        if (eyeClosedFrames > 2) {
+            blinkCount++;
+            document.getElementById('blinkCount').textContent = blinkCount;
+        }
+        eyeClosedFrames = 0;
+    }
+
+    /* Head tilt */
+    const lOuter = lm[33], rOuter = lm[263];
+    const tilt = Math.abs(Math.atan2(rOuter.y - lOuter.y, rOuter.x - lOuter.x) * (180 / Math.PI));
+    document.getElementById('tiltValue').textContent = `Tilt: ${tilt.toFixed(1)}°`;
+
+    const postureEl = document.getElementById('postureStatus');
+    if (tilt > 15) {
+        postureEl.textContent = 'Poor Posture';
+        postureEl.className = 'c-value col-danger';
+        document.getElementById('alertMsg').textContent = '⚠️ Poor posture detected — sit upright!';
+    } else {
+        postureEl.textContent = 'Good';
+        postureEl.className = 'c-value col-green';
+        document.getElementById('alertMsg').textContent = '';
+    }
+
+    sendToBackend(blinkCount, avgEAR < 0.20 ? eyeClosedFrames / 30 : 0, tilt);
+}
+
+/* ─── START CAMERA (getUserMedia directly — most reliable) ─── */
+async function startCamera() {
+    const videoEl = document.getElementById('videoEl');
+    setCamStatus('Requesting camera access...');
+
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            audio: false
+        });
+    } catch (err) {
+        setCamStatus('Camera access denied. Please allow camera permissions.', true);
+        console.error('Camera error:', err);
+        return;
+    }
+
+    videoEl.srcObject = stream;
+
+    videoEl.onloadedmetadata = async () => {
+        await videoEl.play();
+        setCamStatus('Loading AI model...');
+        initFaceMesh();
+
+        // Process frames manually — much more reliable than MediaPipe Camera util
+        async function processFrame() {
+            if (videoEl.readyState >= 2) {
+                try {
+                    await faceMesh.send({ image: videoEl });
+                } catch (e) {
+                    // silent — model may still be initialising
+                }
+            }
+            requestAnimationFrame(processFrame);
+        }
+        processFrame();
+    };
+
+    videoEl.onerror = () => {
+        setCamStatus('Video error. Try refreshing the page.', true);
+    };
+}
+
+// Kick off when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startCamera);
+} else {
+    startCamera();
+}
+
+/* ─── SEND TO BACKEND ─── */
+function sendToBackend(blink, closure, tilt) {
+    const now = Date.now();
+    if (now - sendThrottle < 5000) return;
+    sendThrottle = now;
+    fetch('/save-fatigue/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        body: JSON.stringify({ blink_rate: blink, eye_closure_duration: closure, head_tilt_angle: tilt })
+    }).catch(() => {});
+}
+
+/* ─── GAUGE ─── */
+function initGauge(val) {
+    const ctx = document.getElementById('fatigueGauge');
+    if (!fatigueGaugeChart) {
+        fatigueGaugeChart = new Chart(ctx, {
+            type: 'gauge',
+            data: {
+                datasets: [{
+                    value: val,
+                    minValue: 0,
+                    data: [0.4, 0.7, 1.0],
+                    backgroundColor: ['#00e5a0', '#ffd166', '#ff4d6d']
+                }]
+            },
+            options: {
+                needle: { radiusPercentage: 2, widthPercentage: 3.2, lengthPercentage: 80, color: 'rgba(255,255,255,0.85)' },
+                valueLabel: { display: false }
+            }
+        });
+    } else {
+        fatigueGaugeChart.data.datasets[0].value = val;
+        fatigueGaugeChart.update();
+    }
+    document.getElementById('gaugeVal').textContent = val.toFixed(2);
+}
+
+initGauge(0);
+function loadGauge() {
+    fetch('/current-fatigue/')
+        .then(r => r.json())
+        .then(d => initGauge(d.fatigue))
+        .catch(() => {});
+}
+loadGauge();
+setInterval(loadGauge, 8000);
+
+/* ─── CHARTS ─── */
+Chart.defaults.color = '#4d7a9e';
+Chart.defaults.borderColor = '#1a2e47';
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+
+fetch('/analytics-data/')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('fatigueChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Avg Fatigue',
+                    data: data.fatigue,
+                    borderColor: '#00d4ff',
+                    backgroundColor: 'rgba(0,212,255,0.08)',
+                    fill: true, tension: 0.4, pointRadius: 4,
+                    pointBackgroundColor: '#00d4ff',
+                    pointBorderColor: '#060b12', pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#4d7a9e', font: { size: 11 } } } },
+                scales: {
+                    x: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' } },
+                    y: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' }, min: 0, max: 1 }
+                }
+            }
+        });
+
+        new Chart(document.getElementById('workChart'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Work Hours',
+                    data: data.work_hours,
+                    backgroundColor: 'rgba(123,92,240,0.5)',
+                    borderColor: '#7b5cf0',
+                    borderWidth: 1, borderRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: '#4d7a9e', font: { size: 11 } } } },
+                scales: {
+                    x: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' } },
+                    y: { grid: { color: '#1a2e47' }, ticks: { color: '#4d7a9e' }, min: 0 }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
