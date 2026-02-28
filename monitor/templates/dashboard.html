@@ -9,6 +9,18 @@
 
 {% block content %}
 
+<!-- ── BACKGROUND TRACKING BANNER ── -->
+<div id="bgBanner" style="display:none;background:linear-gradient(135deg,rgba(123,92,240,0.12),rgba(0,212,255,0.08));
+    border:1px solid rgba(123,92,240,0.3);border-radius:10px;padding:10px 18px;margin-bottom:14px;
+    align-items:center;gap:12px;font-size:0.8rem;color:var(--text-primary)">
+    <span style="font-size:1.1rem">👁️</span>
+    <div>
+        <span style="font-weight:600">Tracking continues in the background</span>
+        <span style="color:var(--text-muted);margin-left:8px">— camera is active, data is being recorded while you work in other tabs</span>
+    </div>
+    <span id="bgFrameCount" style="margin-left:auto;font-family:'Space Mono',monospace;font-size:0.68rem;color:var(--accent2)"></span>
+</div>
+
 <!-- ── BREAK ALERT ── -->
 <div class="break-alert" id="breakAlert">
     <span class="ba-icon bi bi-exclamation-triangle-fill"></span>
@@ -137,34 +149,83 @@
 </style>
 
 <script>
+/* ══════════════════════════════════════════════════════════════
+   NeuroWatch — Background-Aware Tracking Engine
+   Works when you switch to other tabs / windows
+   Strategy:
+     1. getUserMedia keeps the camera stream alive regardless of tab focus
+     2. setInterval-based frame pump (instead of rAF) — browsers throttle
+        requestAnimationFrame in background tabs but NOT setInterval (up to 1s)
+     3. Page Visibility API — detect hide/show, adjust frame rate, update UI
+     4. Wake Lock API — prevent device sleep during active session
+     5. Web Worker — keep the send-throttle clock ticking independently
+        of the main thread being backgrounded
+   ══════════════════════════════════════════════════════════════ */
+
 /* ─── CONSTANTS ─── */
 const LEFT_EYE  = [33,160,158,133,153,144];
 const RIGHT_EYE = [362,385,387,263,373,380];
-let blinkCount = 0, eyeClosedFrames = 0;
+const BREAK_MINS = {{ settings.break_interval_minutes|default:45 }};
+const CSRF = (()=>{
+    let v=null;
+    document.cookie.split(';').forEach(c=>{c=c.trim();if(c.startsWith('csrftoken='))v=decodeURIComponent(c.slice(10));});
+    return v;
+})();
+
+/* ─── STATE ─── */
+let blinkCount = 0;
+let eyeClosedFrames = 0;
+let eyeClosedSince = null;     // timestamp when eye closed
+let blinkInProgress = false;   // true while eye is currently closed
+const BLINK_MIN_MS = 50;       // real blink: eye closed ≥ 50ms
+const BLINK_MAX_MS = 400;      // real blink: eye closed ≤ 400ms (longer = sleepy, not blink)
 let fatigueGaugeChart = null;
 let sessionStart = Date.now();
 let meshReady = false;
-let sendThrottle = 0;
+let isBackground = false;
+let frameInterval = null;       // setInterval handle for frame pump
+let lastSentAt = 0;             // throttle: send every 10s
+let lastBlinkForSend = 0, lastTiltForSend = 0, lastClosureForSend = 0;
+let wakeLock = null;
+let faceMesh;
+
+/* ─── WEB WORKER (inline) — keeps send-throttle alive in background ─── */
+/* The worker just fires a message every 10s so the main thread can
+   check if it's time to POST data, even when the tab is throttled. */
+const workerCode = `
+    let interval = setInterval(() => postMessage('tick'), 10000);
+`;
+const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+const sendWorker = new Worker(URL.createObjectURL(workerBlob));
+sendWorker.onmessage = () => {
+    // Worker tick — send latest readings to backend (background-safe)
+    doSend(lastBlinkForSend, lastClosureForSend, lastTiltForSend);
+};
 
 /* ─── UTILS ─── */
-function dist(a, b) {
-    return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-}
+function dist(a, b) { return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2); }
 function calcEAR(lm, eye) {
-    return (dist(lm[eye[1]], lm[eye[5]]) + dist(lm[eye[2]], lm[eye[4]])) /
-           (2.0 * dist(lm[eye[0]], lm[eye[3]]));
-}
-function getCookie(name) {
-    let v = null;
-    document.cookie.split(';').forEach(c => {
-        c = c.trim();
-        if (c.startsWith(name + '=')) v = decodeURIComponent(c.slice(name.length + 1));
-    });
-    return v;
+    return (dist(lm[eye[1]],lm[eye[5]])+dist(lm[eye[2]],lm[eye[4]])) /
+           (2.0*dist(lm[eye[0]],lm[eye[3]]));
 }
 
+/* ─── WAKE LOCK — prevent sleep during session ─── */
+async function requestWakeLock() {
+    if ('wakeLock' in navigator) {
+        try {
+            wakeLock = await navigator.wakeLock.request('screen');
+        } catch(e) { /* not critical */ }
+    }
+}
+// Re-acquire wake lock when tab becomes visible again (it releases on hide)
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && wakeLock === null) {
+        await requestWakeLock();
+    }
+});
+
 /* ─── CAMERA STATUS UI ─── */
-function setCamStatus(text, isError = false) {
+function setCamStatus(text, isError=false) {
     document.getElementById('camStatusText').textContent = text;
     if (isError) {
         document.getElementById('camSpinner').style.borderTopColor = 'var(--danger)';
@@ -172,155 +233,194 @@ function setCamStatus(text, isError = false) {
     }
 }
 function hideCamOverlay() {
-    const overlay = document.getElementById('camStatus');
-    overlay.style.opacity = '0';
-    overlay.style.transition = 'opacity 0.5s';
-    setTimeout(() => { overlay.style.display = 'none'; }, 500);
-    // Go live
-    document.getElementById('liveDot').style.background = 'var(--accent3)';
-    document.getElementById('liveDot').style.animation = 'blink 1.5s infinite';
-    document.getElementById('liveLabel').textContent = 'LIVE';
+    const el = document.getElementById('camStatus');
+    el.style.opacity = '0'; el.style.transition = 'opacity 0.5s';
+    setTimeout(()=>{ el.style.display='none'; }, 500);
+    setLiveIndicator(true);
+}
+function setLiveIndicator(live) {
+    document.getElementById('liveDot').style.background  = live ? 'var(--accent3)' : 'var(--warning)';
+    document.getElementById('liveDot').style.animation   = live ? 'blink 1.5s infinite' : 'none';
+    document.getElementById('liveLabel').textContent     = live ? 'LIVE' : 'BACKGROUND';
 }
 
-/* ─── SESSION TIMER ─── */
+/* ─── SESSION TIMER (setInterval is NOT throttled in background tabs) ─── */
 setInterval(() => {
-    const s = Math.floor((Date.now() - sessionStart) / 1000);
-    const m = Math.floor(s / 60), sec = s % 60;
+    const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+    const m = Math.floor(elapsed / 60), sec = elapsed % 60;
     document.getElementById('sessionTimer').textContent =
-        String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
-    const breakMins = {{ settings.break_interval_minutes|default:45 }};
-    if (m >= breakMins && m % breakMins === 0 && sec === 0) {
-        // POST break alert to server once per interval
-        fetch('/alerts/break/', {method:'POST', headers:{'X-CSRFToken':getCookie('csrftoken')}}).catch(()=>{});
+        String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+
+    // Break reminder
+    if (m >= BREAK_MINS && m % BREAK_MINS === 0 && sec === 0) {
+        fetch('/alerts/break/', {method:'POST', headers:{'X-CSRFToken':CSRF}}).catch(()=>{});
     }
-    if (m >= breakMins) document.getElementById('breakAlert').classList.add('show');
+    if (m >= BREAK_MINS) document.getElementById('breakAlert').classList.add('show');
     else document.getElementById('breakAlert').classList.remove('show');
 }, 1000);
 
-/* ─── FACE MESH SETUP ─── */
-let faceMesh;
+/* ─── PAGE VISIBILITY API ─── */
+let bgFrames = 0;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        isBackground = true;
+        setLiveIndicator(false);
+        // Slow frame rate in background (1 frame every 2s) — saves CPU, still tracks
+        restartFramePump(2000);
+        // Show background banner when user returns
+    } else {
+        isBackground = false;
+        setLiveIndicator(meshReady);
+        restartFramePump(100);
+        // Show how many background frames were captured
+        if (bgFrames > 0) {
+            const banner = document.getElementById('bgBanner');
+            document.getElementById('bgFrameCount').textContent = `${bgFrames} frames captured while away`;
+            banner.style.display = 'flex';
+            bgFrames = 0;
+            setTimeout(() => { banner.style.display = 'none'; }, 6000);
+        }
+    }
+});
 
-function initFaceMesh() {
-    faceMesh = new FaceMesh({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
-    });
-    faceMesh.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: false,       // false = faster init
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-    });
-    faceMesh.onResults(onFaceMeshResults);
-    return faceMesh;
+/* ─── FRAME PUMP (setInterval — works in background unlike rAF) ─── */
+let frameProcessing = false;  // lock — prevent overlapping async faceMesh.send()
+
+function restartFramePump(intervalMs) {
+    if (frameInterval) clearInterval(frameInterval);
+    frameInterval = setInterval(captureFrame, intervalMs);
 }
 
-function onFaceMeshResults(results) {
-    if (!meshReady) {
-        meshReady = true;
-        hideCamOverlay();
-    }
+const videoEl = document.getElementById('videoEl');
 
-    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
-        document.getElementById('postureStatus').textContent = 'No Face';
-        document.getElementById('postureStatus').className = 'c-value col-warn';
-        document.getElementById('alertMsg').textContent = '👤 No face detected — move closer to camera';
+async function captureFrame() {
+    // Skip if previous frame hasn't finished processing — prevents queue buildup
+    if (frameProcessing || !faceMesh || videoEl.readyState < 2 || videoEl.paused) return;
+    frameProcessing = true;
+    try {
+        await faceMesh.send({ image: videoEl });
+        if (isBackground) bgFrames++;
+    } catch(e) { /* model initialising */ }
+    finally { frameProcessing = false; }
+}
+
+/* ─── FACE MESH ─── */
+function initFaceMesh() {
+    faceMesh = new FaceMesh({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+    });
+    faceMesh.setOptions({
+        maxNumFaces: 1, refineLandmarks: false,
+        minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onResults);
+}
+
+function onResults(results) {
+    if (!meshReady) { meshReady = true; hideCamOverlay(); }
+
+    if (!results.multiFaceLandmarks?.length) {
+        if (!isBackground) {
+            document.getElementById('postureStatus').textContent = 'No Face';
+            document.getElementById('postureStatus').className = 'c-value col-warn';
+            document.getElementById('alertMsg').textContent = '👤 No face detected — move closer';
+        }
         return;
     }
 
     const lm = results.multiFaceLandmarks[0];
 
-    /* Blink detection via EAR */
+    /* ── Blink detection — time-based, works at any frame rate ── */
     const avgEAR = (calcEAR(lm, LEFT_EYE) + calcEAR(lm, RIGHT_EYE)) / 2;
-    if (avgEAR < 0.20) {
-        eyeClosedFrames++;
-    } else {
-        if (eyeClosedFrames > 2) {
+    const now = Date.now();
+    const eyeClosed = avgEAR < 0.22;   // slightly higher threshold = more sensitive
+
+    if (eyeClosed && !blinkInProgress) {
+        // Eye just closed — start timing
+        blinkInProgress = true;
+        eyeClosedSince = now;
+    } else if (!eyeClosed && blinkInProgress) {
+        // Eye just opened — measure how long it was closed
+        const closedDuration = now - eyeClosedSince;
+        blinkInProgress = false;
+        eyeClosedSince = null;
+
+        if (closedDuration >= BLINK_MIN_MS && closedDuration <= BLINK_MAX_MS) {
+            // Valid blink duration — count it
             blinkCount++;
-            document.getElementById('blinkCount').textContent = blinkCount;
+            if (!isBackground) document.getElementById('blinkCount').textContent = blinkCount;
         }
-        eyeClosedFrames = 0;
+        // If closedDuration > BLINK_MAX_MS it's prolonged closure (drowsiness), not a blink
     }
+
+    // For backend: closure duration in seconds
+    const closureDuration = blinkInProgress ? (now - eyeClosedSince) / 1000 : 0;
 
     /* Head tilt */
-    const lOuter = lm[33], rOuter = lm[263];
-    const tilt = Math.abs(Math.atan2(rOuter.y - lOuter.y, rOuter.x - lOuter.x) * (180 / Math.PI));
-    document.getElementById('tiltValue').textContent = `Tilt: ${tilt.toFixed(1)}°`;
+    const lo=lm[33], ro=lm[263];
+    const tilt = Math.abs(Math.atan2(ro.y-lo.y, ro.x-lo.x)*(180/Math.PI));
 
-    const postureEl = document.getElementById('postureStatus');
-    if (tilt > 15) {
-        postureEl.textContent = 'Poor Posture';
-        postureEl.className = 'c-value col-danger';
-        document.getElementById('alertMsg').textContent = '⚠️ Poor posture detected — sit upright!';
-    } else {
-        postureEl.textContent = 'Good';
-        postureEl.className = 'c-value col-green';
-        document.getElementById('alertMsg').textContent = '';
+    /* Cache latest readings for the worker-driven send */
+    lastBlinkForSend   = blinkCount;
+    lastClosureForSend = closureDuration;
+    lastTiltForSend    = tilt;
+
+    /* Update UI only when tab is visible (no point updating hidden DOM) */
+    if (!isBackground) {
+        document.getElementById('tiltValue').textContent = `Tilt: ${tilt.toFixed(1)}°`;
+        const postureEl = document.getElementById('postureStatus');
+        if (tilt > {{ settings.posture_tilt_threshold|default:15 }}) {
+            postureEl.textContent = 'Poor Posture';
+            postureEl.className = 'c-value col-danger';
+            document.getElementById('alertMsg').textContent = '⚠️ Poor posture — sit upright!';
+        } else {
+            postureEl.textContent = 'Good';
+            postureEl.className = 'c-value col-green';
+            document.getElementById('alertMsg').textContent = '';
+        }
     }
-
-    sendToBackend(blinkCount, avgEAR < 0.20 ? eyeClosedFrames / 30 : 0, tilt);
 }
 
-/* ─── START CAMERA (getUserMedia directly — most reliable) ─── */
-async function startCamera() {
-    const videoEl = document.getElementById('videoEl');
-    setCamStatus('Requesting camera access...');
+/* ─── SEND TO BACKEND (called by Web Worker tick) ─── */
+function doSend(blink, closure, tilt) {
+    // Also guard with time check in case worker fires too fast
+    const now = Date.now();
+    if (now - lastSentAt < 9000) return;
+    lastSentAt = now;
+    fetch('/save-fatigue/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ blink_rate: blink, eye_closure_duration: closure, head_tilt_angle: tilt })
+    }).catch(()=>{});
+}
 
+/* ─── START EVERYTHING ─── */
+async function startCamera() {
+    setCamStatus('Requesting camera access...');
     let stream;
     try {
         stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            video: { width:{ideal:640}, height:{ideal:480}, facingMode:'user' },
             audio: false
         });
-    } catch (err) {
+    } catch(err) {
         setCamStatus('Camera access denied. Please allow camera permissions.', true);
-        console.error('Camera error:', err);
         return;
     }
 
     videoEl.srcObject = stream;
-
     videoEl.onloadedmetadata = async () => {
         await videoEl.play();
         setCamStatus('Loading AI model...');
         initFaceMesh();
-
-        // Process frames manually — much more reliable than MediaPipe Camera util
-        async function processFrame() {
-            if (videoEl.readyState >= 2) {
-                try {
-                    await faceMesh.send({ image: videoEl });
-                } catch (e) {
-                    // silent — model may still be initialising
-                }
-            }
-            requestAnimationFrame(processFrame);
-        }
-        processFrame();
+        await requestWakeLock();
+        restartFramePump(100);  // start at full rate (10fps)
     };
-
-    videoEl.onerror = () => {
-        setCamStatus('Video error. Try refreshing the page.', true);
-    };
+    videoEl.onerror = () => setCamStatus('Video error. Try refreshing.', true);
 }
 
-// Kick off when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', startCamera);
-} else {
-    startCamera();
-}
-
-/* ─── SEND TO BACKEND ─── */
-function sendToBackend(blink, closure, tilt) {
-    const now = Date.now();
-    if (now - sendThrottle < 5000) return;
-    sendThrottle = now;
-    fetch('/save-fatigue/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-        body: JSON.stringify({ blink_rate: blink, eye_closure_duration: closure, head_tilt_angle: tilt })
-    }).catch(() => {});
-}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startCamera);
+else startCamera();
 
 /* ─── GAUGE ─── */
 function initGauge(val) {
